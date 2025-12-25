@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title> Tâm Đức Cấp 2 - Hệ Thống Quản Lý Đào Tạo</title>
+    <title>Tâm Đức Cấp 2 - Hệ Thống Quản Lý Đào Tạo</title>
     <!-- Thư viện CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -174,8 +174,13 @@
             const [isLoading, setIsLoading] = useState(false);
             const [darkMode, setDarkMode] = useState(false);
             
+            // Filters Overview
             const [ovBranch, setOvBranch] = useState('All');
+            const [ovGrade, setOvGrade] = useState('All');
+            const [ovSubject, setOvSubject] = useState('All');
             const [ovSearch, setOvSearch] = useState('');
+
+            // Filters Scheduler
             const [schedulerMode, setSchedulerMode] = useState('list');
             const [schBranch, setSchBranch] = useState('All');
             const [schGrade, setSchGrade] = useState('All');
@@ -239,12 +244,15 @@
             const filteredOverviewData = useMemo(() => {
                 return data.filter(item => {
                     const matchBranch = ovBranch === 'All' || item.branch === ovBranch;
+                    const matchGrade = ovGrade === 'All' || item.grade === ovGrade;
+                    const matchSubject = ovSubject === 'All' || item.subject === ovSubject;
                     const searchLower = ovSearch.toLowerCase();
                     const teacherName = item.teacher ? item.teacher.toLowerCase() : "";
                     const subjectName = item.subject ? item.subject.toLowerCase() : "";
-                    return matchBranch && (teacherName.includes(searchLower) || subjectName.includes(searchLower));
+                    
+                    return matchBranch && matchGrade && matchSubject && (teacherName.includes(searchLower) || subjectName.includes(searchLower));
                 });
-            }, [data, ovBranch, ovSearch]);
+            }, [data, ovBranch, ovGrade, ovSubject, ovSearch]);
 
             const filteredSchedulerData = useMemo(() => {
                 return data.filter(item => {
@@ -276,8 +284,8 @@
                             <div className="p-8 flex items-center gap-3">
                                 <div className="w-10 h-10 bg-[#4285F4] rounded-lg flex items-center justify-center text-white shadow-lg font-black text-xl">E</div>
                                 <div className="text-left leading-tight">
-                                    <h1 className="text-sm font-bold">Tâm Đức Cấp 2</h1>
-                                    <p className="text-[10px] text-[#5F6368] font-bold uppercase tracking-wider">Quản lý GV-HS</p>
+                                    <h1 className="text-sm font-bold">EduDashboard</h1>
+                                    <p className="text-[10px] text-[#5F6368] font-bold uppercase tracking-wider">Admin Console</p>
                                 </div>
                             </div>
                             <nav className="px-3 space-y-1 mt-4">
@@ -327,15 +335,39 @@
                                             </div>
                                         </div>
 
-                                        {/* Bộ lọc Overview */}
-                                        <div className="bg-white dark:bg-[#17191C] p-4 lg:p-6 rounded-[2rem] lg:rounded-[2.5rem] border border-[#DADCE0] dark:border-[#3C4043] shadow-sm flex flex-col md:flex-row gap-4">
-                                            <div className="relative flex-1">
-                                                <Icon name="search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA0A6]" />
-                                                <input type="text" placeholder="Tìm tên GV, môn học..." className="w-full pl-12 pr-4 py-3.5 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-2xl outline-none text-sm font-bold focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovSearch} onChange={e => setOvSearch(e.target.value)} />
+                                        {/* Bộ lọc Overview - Cập nhật giống Scheduler */}
+                                        <div className="bg-white dark:bg-[#17191C] p-6 rounded-[2rem] border border-[#DADCE0] dark:border-[#3C4043] shadow-sm">
+                                            <div className="flex items-center gap-2 mb-4">
+                                                <Icon name="filter" size={16} className="text-[#4285F4]" />
+                                                <span className="text-xs font-black uppercase tracking-widest text-[#5F6368] dark:text-[#9AA0A6]">Bộ lọc nhanh</span>
                                             </div>
-                                            <select className="px-6 py-3.5 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-2xl text-[11px] font-bold uppercase outline-none cursor-pointer hover:bg-[#F1F3F4] transition-colors dark:text-white" value={ovBranch} onChange={e => setOvBranch(e.target.value)}>
-                                                {branches.map(b => <option key={b} value={b}>{b === 'All' ? 'Tất cả chi nhánh' : b}</option>)}
-                                            </select>
+                                            <div className="grid grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4">
+                                                <div className="space-y-1.5 text-left">
+                                                    <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Chi nhánh</label>
+                                                    <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovBranch} onChange={e => setOvBranch(e.target.value)}>
+                                                        {branches.map(b => <option key={b} value={b}>{b === 'All' ? 'Tất cả' : b}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5 text-left">
+                                                    <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Khối lớp</label>
+                                                    <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovGrade} onChange={e => setOvGrade(e.target.value)}>
+                                                        {grades.map(g => <option key={g} value={g}>{g === 'All' ? 'Khối' : g}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5 text-left">
+                                                    <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Môn học</label>
+                                                    <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovSubject} onChange={e => setOvSubject(e.target.value)}>
+                                                        {subjects.map(s => <option key={s} value={s}>{s === 'All' ? 'Môn' : s}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-1.5 col-span-3 lg:col-span-1 text-left">
+                                                    <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Tìm kiếm nhanh</label>
+                                                    <div className="relative">
+                                                        <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9AA0A6]" />
+                                                        <input type="text" placeholder="Tên..." className="w-full pl-9 pr-3 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovSearch} onChange={e => setOvSearch(e.target.value)} />
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {/* Danh sách thẻ */}
@@ -486,7 +518,4 @@
         root.render(<App />);
     </script>
 </body>
-
 </html>
-
-
