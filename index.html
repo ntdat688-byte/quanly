@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tâm Đức Cấp 2 - Hệ Thống Quản Lý Đào Tạo</title>
+    <title>Tâm Đức Cấp 2 - Hệ Thống Quản Lý Học Sinh</title>
     <!-- Thư viện CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -301,10 +301,10 @@
                             <div className="p-4 lg:p-10 max-w-7xl mx-auto">
                                 <header className="flex flex-wrap justify-between items-center mb-6 lg:mb-8 gap-4 px-1 lg:px-2">
                                     <div className="text-left">
-                                        <h2 className="text-lg lg:text-xl font-black tracking-tight uppercase leading-none mb-1">HỆ THỐNG THỐNG GIÁO DỤC TÂM ĐỨC- KHỐI CẤP 2</h2>
+                                        <h2 className="text-lg lg:text-xl font-black tracking-tight uppercase leading-none mb-1">TÂM ĐỨC CẤP 2</h2>
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 rounded-full bg-[#34A853] animate-pulse"></div>
-                                            <p className="text-[#5F6368] dark:text-[#9AA0A6] text-[10px] font-bold uppercase tracking-widest">Hệ thống quản lý HS theo thời gian thực</p>
+                                            <p className="text-[#5F6368] dark:text-[#9AA0A6] text-[10px] font-bold uppercase tracking-widest">Hệ thống quản lý học sinh theo thời gian thực</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
@@ -326,7 +326,7 @@
                                                 </div>
                                             </div>
                                             <div className="bg-[#34A853] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
-                                                <h3 className="text-[10px] font-black uppercase text-green-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="trending-up" size={14} /> Top tăng trưởng</h3>
+                                                <h3 className="text-[10px] font-black uppercase text-green-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="trending-up" size={14} /> Top tăng HS</h3>
                                                 <div className="space-y-2 text-left">{stats.risingStars.map(s => (<div key={s.id} className="flex justify-between items-center bg-white/10 p-2.5 rounded-2xl border border-white/10"><span className="text-[11px] font-bold truncate pr-3">{s.teacher}</span><span className="text-[11px] font-black shrink-0">+{s.diff}</span></div>))}</div>
                                             </div>
                                             <div className="bg-[#EA4335] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
@@ -519,4 +519,5 @@
     </script>
 </body>
 </html>
+
 
