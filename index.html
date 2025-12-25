@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>EduDashboard - Hệ Thống Quản Lý Đào Tạo</title>
+    <!-- Thư viện CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (Stable cdnjs) -->
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Firebase SDK (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script>
+        window.tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    borderRadius: { '2xl': '1rem', '3xl': '1.5rem', '4xl': '2rem' },
+                    screens: { 'xs': '480px' }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .dark::-webkit-scrollbar-thumb { background: #475569; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Custom scrollbar cho các bảng dữ liệu */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.1); border-radius: 4px; }
+        
+        /* Đảm bảo bảng 7 cột trên mobile có thể cuộn ngang mượt mà */
+        .mobile-scroll-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+    </style>
+</head>
+<body class="bg-[#F8F9FA] dark:bg-[#0B0E14] transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useCallback } = React;
+
+        // --- LINK DỮ LIỆU CỐ ĐỊNH (Google Sheet CSV) ---
+        const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSR6ybrwde_McrrJ4dKZfoHD2xoL8cReGY8g-jk-8q-Dl3yuwtiRitBh5TXAt48Qp7W8JVYK5MSJfJY/pub?output=csv";
+
+        // --- CẤU HÌNH FIREBASE (Dành cho mở rộng sau này) ---
+        const firebaseConfig = {
+            apiKey: "",
+            authDomain: "",
+            projectId: "",
+            storageBucket: "",
+            messagingSenderId: "",
+            appId: ""
+        };
+
+        // Khởi tạo Firebase
+        let auth = null;
+        let db = null;
+        try {
+            if (firebaseConfig.apiKey && !firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
+            } else if (firebase.apps.length) {
+                auth = firebase.auth();
+                db = firebase.firestore();
+            }
+        } catch (error) { console.warn("Firebase skip:", error.message); }
+
+        const Icon = ({ name, size = 18, className = "" }) => <i data-lucide={name} style={{ width: size, height: size }} className={`inline-block shrink-0 ${className}`}></i>;
+
+        const INITIAL_DATA = [{ id: 1, updatedAt: "Đang tải...", teacher: "...", classCode: "...", branch: "...", grade: "...", subject: "...", current: 0, day: "...", lastCurrent: 0 }];
+
+        // --- HELPER FUNCTIONS ---
+        const getTimeFromDay = (dayStr) => {
+            if (!dayStr) return '';
+            const match = dayStr.match(/\((\d{1,2}:\d{2})\)/);
+            return match ? match[1] : '';
+        };
+
+        // Logic màu sắc rực rỡ theo ca học
+        const getShiftColor = (time) => {
+            if (!time) return "bg-white dark:bg-[#17191C] border-[#DADCE0] dark:border-[#3C4043] text-gray-700";
+            const hour = parseInt(time.split(':')[0]);
+            if (hour < 12) return "bg-amber-50 border-amber-200 text-amber-900"; // Sáng
+            if (hour >= 12 && hour < 17) return "bg-emerald-50 border-emerald-200 text-emerald-900"; // Chiều
+            if (hour >= 17 && hour < 19) return "bg-blue-50 border-blue-200 text-blue-900"; // Tối
+            return "bg-purple-50 border-purple-200 text-purple-900"; // Khuya
+        };
+
+        // --- COMPONENT LỊCH TUẦN (7 Cột Ngang) ---
+        const CalendarWeekView = ({ data }) => {
+            const weekDays = [
+                { id: 'T2', label: 'Thứ Hai', keywords: ['Thứ 2', 'T2'] },
+                { id: 'T3', label: 'Thứ Ba', keywords: ['Thứ 3', 'T3'] },
+                { id: 'T4', label: 'Thứ Tư', keywords: ['Thứ 4', 'T4'] },
+                { id: 'T5', label: 'Thứ Năm', keywords: ['Thứ 5', 'T5'] },
+                { id: 'T6', label: 'Thứ Sáu', keywords: ['Thứ 6', 'T6'] },
+                { id: 'T7', label: 'Thứ Bảy', keywords: ['Thứ 7', 'T7'] },
+                { id: 'CN', label: 'Chủ Nhật', keywords: ['Chủ Nhật', 'CN'] },
+            ];
+
+            const getCalendarShiftColor = (time) => {
+                if (!time) return "bg-gray-100 border-l-4 border-gray-400 text-gray-700";
+                const hour = parseInt(time.split(':')[0]);
+                if (hour < 12) return "bg-amber-100 border-l-4 border-amber-500 text-amber-900 hover:bg-amber-200"; 
+                if (hour >= 12 && hour < 17) return "bg-emerald-100 border-l-4 border-emerald-500 text-emerald-900 hover:bg-emerald-200"; 
+                if (hour >= 17 && hour < 19) return "bg-blue-100 border-l-4 border-blue-500 text-blue-900 hover:bg-blue-200"; 
+                return "bg-purple-100 border-l-4 border-purple-500 text-purple-900 hover:bg-purple-200"; 
+            };
+
+            return (
+                <div className="bg-white dark:bg-[#17191C] rounded-[2rem] border border-[#DADCE0] dark:border-[#3C4043] shadow-xl animate-fade-in p-4 lg:p-6 mobile-scroll-container">
+                    <div className="grid grid-cols-7 gap-2 lg:gap-4 min-w-[900px] lg:min-w-full">
+                        {weekDays.map(day => {
+                            const classesToday = data.filter(d => day.keywords.some(k => d.day?.includes(k)));
+                            classesToday.sort((a, b) => (getTimeFromDay(a.day) || "00:00").localeCompare(getTimeFromDay(b.day) || "00:00"));
+
+                            return (
+                                <div key={day.id} className="flex flex-col gap-3">
+                                    <div className={`text-center py-2 lg:py-3 rounded-2xl font-black uppercase tracking-wider text-[10px] lg:text-xs border ${day.id === 'CN' ? 'bg-red-50 text-red-600 border-red-100' : 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-[#202124] dark:text-gray-300 dark:border-[#3C4043]'}`}>
+                                        {day.label}
+                                    </div>
+                                    <div className="flex-1 space-y-3 min-h-[300px] lg:min-h-[400px] bg-[#F8F9FA]/50 dark:bg-[#202124]/30 rounded-2xl p-2 border border-dashed border-gray-200 dark:border-gray-800">
+                                        {classesToday.length > 0 ? classesToday.map(c => {
+                                            const time = getTimeFromDay(c.day);
+                                            const colorClass = getCalendarShiftColor(time);
+                                            const gradeNum = (c.grade || "").replace(/[^\d]/g, '');
+                                            return (
+                                                <div key={c.id} className={`p-3 rounded-xl shadow-sm border-0 ${colorClass} transition-all cursor-pointer group active:scale-95`}>
+                                                    <div className="flex flex-col gap-1 text-left">
+                                                        {time && <div className="text-[9px] font-black opacity-80 uppercase tracking-wider bg-white/40 w-fit px-1.5 rounded">{time}</div>}
+                                                        <span className="text-[10px] lg:text-[11px] font-bold leading-tight line-clamp-2 mt-0.5">{c.subject} Lớp {gradeNum}</span>
+                                                        <div className="text-[8px] lg:text-[9px] font-semibold opacity-80 truncate border-t border-black/5 pt-1 mt-1">{c.teacher}</div>
+                                                        <div className="text-[7px] lg:text-[8px] opacity-60 font-bold uppercase tracking-wide truncate">{c.branch}</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }) : (
+                                            <div className="text-[9px] text-gray-300 dark:text-gray-600 font-medium text-center py-12 italic">Trống</div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [user, setUser] = useState(null);
+            const [data, setData] = useState(INITIAL_DATA);
+            const [activeTab, setActiveTab] = useState('overview'); 
+            const [isLoading, setIsLoading] = useState(false);
+            const [darkMode, setDarkMode] = useState(false);
+            
+            const [ovBranch, setOvBranch] = useState('All');
+            const [ovSearch, setOvSearch] = useState('');
+            const [schedulerMode, setSchedulerMode] = useState('list');
+            const [schBranch, setSchBranch] = useState('All');
+            const [schGrade, setSchGrade] = useState('All');
+            const [schSubject, setSchSubject] = useState('All');
+            const [schSearch, setSchSearch] = useState('');
+
+            // Tải dữ liệu từ Sheet
+            const fetchLiveSheet = useCallback(async () => {
+                setIsLoading(true);
+                try {
+                    const response = await fetch(SHEET_URL);
+                    const csvText = await response.text();
+                    const rows = csvText.split('\n').filter(row => row.trim() !== '');
+                    const parsedData = rows.map((row, index) => {
+                        const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim());
+                        if (index === 0 && (cols[1]?.toLowerCase().includes('giáo viên') || cols[0]?.toLowerCase().includes('ngày'))) return null;
+                        if (cols.length < 9) return null;
+                        return {
+                            id: Date.now() + index,
+                            updatedAt: cols[0], teacher: cols[1], classCode: cols[2], branch: cols[3], grade: cols[4],
+                            subject: cols[5], current: parseInt(cols[6]) || 0, day: cols[7], lastCurrent: parseInt(cols[8]) || parseInt(cols[6]) || 0
+                        };
+                    }).filter(Boolean);
+                    if (parsedData.length > 0) setData(parsedData);
+                } catch (error) { console.error("Lỗi đồng bộ:", error); } finally { setIsLoading(false); }
+            }, []);
+
+            useEffect(() => {
+                fetchLiveSheet();
+                if (window.lucide) window.lucide.createIcons();
+            }, [fetchLiveSheet]);
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+
+            const getTeacherIdentity = (name) => {
+                if (!name) return { bg: 'bg-gray-100', text: 'text-gray-500', border: 'border-gray-200' };
+                const palette = [
+                    { bg: 'bg-[#E8F0FE]', text: 'text-[#1A73E8]', border: 'border-[#1A73E8]/30' },
+                    { bg: 'bg-[#FCE8E6]', text: 'text-[#D93025]', border: 'border-[#D93025]/30' },
+                    { bg: 'bg-[#FEF7E0]', text: 'text-[#F9AB00]', border: 'border-[#F9AB00]/40' },
+                    { bg: 'bg-[#E6F4EA]', text: 'text-[#1E8E3E]', border: 'border-[#1E8E3E]/30' },
+                ];
+                const hash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                return palette[hash % palette.length];
+            };
+
+            const branchStyles = {
+                "Phan Đăng Lưu": "bg-[#4285F4] text-white",
+                "Nguyễn Kiệm": "bg-[#34A853] text-white",
+                "Võ Văn Ngân": "bg-[#FBBC04] text-white",
+                "Thủ Đức": "bg-[#EA4335] text-white",
+                "Default": "bg-slate-600 text-white"
+            };
+
+            const branches = useMemo(() => ['All', ...new Set(data.map(d => d.branch))], [data]);
+            const grades = useMemo(() => ['All', ...new Set(data.map(d => d.grade))], [data]);
+            const subjects = useMemo(() => ['All', ...new Set(data.map(d => d.subject))], [data]);
+
+            const filteredOverviewData = useMemo(() => {
+                return data.filter(item => {
+                    const matchBranch = ovBranch === 'All' || item.branch === ovBranch;
+                    const searchLower = ovSearch.toLowerCase();
+                    const teacherName = item.teacher ? item.teacher.toLowerCase() : "";
+                    const subjectName = item.subject ? item.subject.toLowerCase() : "";
+                    return matchBranch && (teacherName.includes(searchLower) || subjectName.includes(searchLower));
+                });
+            }, [data, ovBranch, ovSearch]);
+
+            const filteredSchedulerData = useMemo(() => {
+                return data.filter(item => {
+                    const matchBranch = schBranch === 'All' || item.branch === schBranch;
+                    const matchGrade = schGrade === 'All' || item.grade === schGrade;
+                    const matchSubject = schSubject === 'All' || item.subject === schSubject;
+                    const searchLower = schSearch.toLowerCase();
+                    const teacherName = item.teacher ? item.teacher.toLowerCase() : "";
+                    const subjectName = item.subject ? item.subject.toLowerCase() : "";
+                    const matchSearch = teacherName.includes(searchLower) || subjectName.includes(searchLower);
+                    return matchBranch && matchGrade && matchSubject && matchSearch;
+                });
+            }, [data, schBranch, schGrade, schSubject, schSearch]);
+
+            const stats = useMemo(() => {
+                const itemsWithDiff = filteredOverviewData.map(d => ({ ...d, diff: d.current - d.lastCurrent }));
+                const total = itemsWithDiff.reduce((sum, d) => sum + d.current, 0);
+                const trend = itemsWithDiff.reduce((sum, d) => sum + d.diff, 0);
+                const risingStars = [...itemsWithDiff].filter(d => d.diff > 0).sort((a, b) => b.diff - a.diff).slice(0, 3);
+                const needsAttention = [...itemsWithDiff].sort((a, b) => a.diff - b.diff).slice(0, 3);
+                return { total, trend, risingStars, needsAttention };
+            }, [filteredOverviewData]);
+
+            return (
+                <div className={darkMode ? 'dark' : ''}>
+                    <div className="min-h-screen bg-[#F8F9FA] dark:bg-[#0B0E14] text-[#202124] dark:text-[#E8EAED] transition-colors duration-300 pb-28 lg:pb-0">
+                        {/* Sidebar cho Desktop */}
+                        <aside className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-[#17191C] border-r border-[#DADCE0] dark:border-[#3C4043] z-30 hidden lg:block">
+                            <div className="p-8 flex items-center gap-3">
+                                <div className="w-10 h-10 bg-[#4285F4] rounded-lg flex items-center justify-center text-white shadow-lg font-black text-xl">E</div>
+                                <div className="text-left leading-tight">
+                                    <h1 className="text-sm font-bold">EduDashboard</h1>
+                                    <p className="text-[10px] text-[#5F6368] font-bold uppercase tracking-wider">Admin Console</p>
+                                </div>
+                            </div>
+                            <nav className="px-3 space-y-1 mt-4">
+                                {[{ id: 'overview', label: 'Báo cáo sĩ số', icon: 'layout-dashboard' }, { id: 'scheduler', label: 'Tư vấn ghi danh', icon: 'user-plus' }].map((item) => (
+                                    <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex items-center gap-3 px-4 py-3 rounded-full transition-all w-full font-bold text-sm text-left ${activeTab === item.id ? 'bg-[#E8F0FE] text-[#1967D2] dark:bg-[#4285F4]/20 dark:text-[#8AB4F8]' : 'text-[#5F6368] dark:text-[#9AA0A6] hover:bg-[#F1F3F4] dark:hover:bg-[#303134]'}`}>
+                                        <Icon name={item.icon} size={18} /> {item.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        </aside>
+
+                        <main className="lg:pl-64 min-h-screen">
+                            <div className="p-4 lg:p-10 max-w-7xl mx-auto">
+                                <header className="flex flex-wrap justify-between items-center mb-6 lg:mb-8 gap-4 px-1 lg:px-2">
+                                    <div className="text-left">
+                                        <h2 className="text-lg lg:text-xl font-black tracking-tight uppercase leading-none mb-1">Hệ thống quản lý</h2>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-[#34A853] animate-pulse"></div>
+                                            <p className="text-[#5F6368] dark:text-[#9AA0A6] text-[10px] font-bold uppercase tracking-widest">Live Cloud Data</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={fetchLiveSheet} disabled={isLoading} className="p-3 bg-white dark:bg-[#202124] text-[#5F6368] rounded-full border border-[#DADCE0] dark:border-[#3C4043] hover:bg-[#F1F3F4] transition-all"><Icon name="refresh-cw" size={18} className={isLoading ? 'animate-spin' : ''} /></button>
+                                        <button onClick={() => setDarkMode(!darkMode)} className="p-3 bg-white dark:bg-[#202124] text-[#5F6368] dark:text-[#E8EAED] rounded-full border border-[#DADCE0] dark:border-[#3C4043] shadow-sm hover:bg-[#F1F3F4] transition-all"><Icon name={darkMode ? "sun" : "moon"} size={18} /></button>
+                                    </div>
+                                </header>
+
+                                {activeTab === 'overview' && (
+                                    <div className="space-y-6 lg:space-y-8 animate-fade-in">
+                                        {/* Thống kê nhanh */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6">
+                                            <div className="bg-[#4285F4] p-6 lg:p-8 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden group text-left">
+                                                <div className="absolute right-[-20px] top-[-20px] opacity-10 rotate-12 group-hover:rotate-0 transition-transform duration-700"><Icon name="users" size={160} /></div>
+                                                <p className="text-xs font-bold text-blue-100 uppercase mb-2 tracking-widest">Tổng sĩ số</p>
+                                                <div className="flex items-baseline gap-4">
+                                                    <p className="text-5xl lg:text-6xl font-black tracking-tighter leading-none">{stats.total}</p>
+                                                    <div className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold bg-white/20">{stats.trend >= 0 ? '+' : ''}{stats.trend} biến động</div>
+                                                </div>
+                                            </div>
+                                            <div className="bg-[#34A853] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
+                                                <h3 className="text-[10px] font-black uppercase text-green-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="trending-up" size={14} /> Top tăng trưởng</h3>
+                                                <div className="space-y-2 text-left">{stats.risingStars.map(s => (<div key={s.id} className="flex justify-between items-center bg-white/10 p-2.5 rounded-2xl border border-white/10"><span className="text-[11px] font-bold truncate pr-3">{s.teacher}</span><span className="text-[11px] font-black shrink-0">+{s.diff}</span></div>))}</div>
+                                            </div>
+                                            <div className="bg-[#EA4335] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
+                                                <h3 className="text-[10px] font-black uppercase text-red-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="alert-circle" size={14} /> Lớp cần rà soát</h3>
+                                                <div className="space-y-2 text-left">{stats.needsAttention.map(s => (<div key={s.id} className="flex justify-between items-center bg-white/10 p-2.5 rounded-2xl border border-white/10"><span className="text-[11px] font-bold truncate pr-3">{s.teacher}</span><span className="text-[11px] font-black shrink-0">{s.diff}</span></div>))}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Bộ lọc Overview */}
+                                        <div className="bg-white dark:bg-[#17191C] p-4 lg:p-6 rounded-[2rem] lg:rounded-[2.5rem] border border-[#DADCE0] dark:border-[#3C4043] shadow-sm flex flex-col md:flex-row gap-4">
+                                            <div className="relative flex-1">
+                                                <Icon name="search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9AA0A6]" />
+                                                <input type="text" placeholder="Tìm tên GV, môn học..." className="w-full pl-12 pr-4 py-3.5 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-2xl outline-none text-sm font-bold focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={ovSearch} onChange={e => setOvSearch(e.target.value)} />
+                                            </div>
+                                            <select className="px-6 py-3.5 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-2xl text-[11px] font-bold uppercase outline-none cursor-pointer hover:bg-[#F1F3F4] transition-colors dark:text-white" value={ovBranch} onChange={e => setOvBranch(e.target.value)}>
+                                                {branches.map(b => <option key={b} value={b}>{b === 'All' ? 'Tất cả chi nhánh' : b}</option>)}
+                                            </select>
+                                        </div>
+
+                                        {/* Danh sách thẻ */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                            {filteredOverviewData.map(item => {
+                                                const tIden = getTeacherIdentity(item.teacher);
+                                                const diff = item.current - item.lastCurrent;
+                                                const time = getTimeFromDay(item.day);
+                                                const colorClass = getShiftColor(time);
+
+                                                return (
+                                                    <div key={item.id} className={`rounded-[2.5rem] border p-6 lg:p-8 flex flex-col sm:flex-row justify-between items-center group shadow-sm hover:shadow-xl transition-all relative overflow-hidden ${colorClass}`}>
+                                                        <div className={`absolute top-0 left-0 w-full h-1.5 ${branchStyles[item.branch] || branchStyles.Default}`}></div>
+                                                        <div className="space-y-6 w-full text-left">
+                                                            <div className="space-y-2">
+                                                                <h3 className="text-lg lg:text-xl font-black uppercase dark:text-white leading-tight">{item.subject} Lớp {(item.grade || "").replace(/[^\d]/g, '')}</h3>
+                                                                <div className={`inline-flex items-center px-3 py-1.5 rounded-full border ${tIden.bg} ${tIden.text} ${tIden.border} text-[11px] font-bold uppercase`}>Giáo viên: {item.teacher}</div>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="flex items-center gap-3 text-xs font-bold text-[#5F6368] dark:text-[#9AA0A6]"><Icon name="clock" size={18} className="text-[#4285F4]" /> {item.day}</div>
+                                                                <div className="flex items-center gap-3 text-xs font-bold text-[#5F6368] dark:text-[#9AA0A6]"><Icon name="map-pin" size={18} className="text-[#34A853]" /> {item.branch}</div>
+                                                            </div>
+                                                            <div className="pt-3 border-t border-black/5">
+                                                                <div className="flex items-center gap-2 text-[10px] font-bold text-[#5F6368] dark:text-[#9AA0A6] uppercase tracking-wider">
+                                                                    <Icon name="history" size={14} className="text-gray-400" />
+                                                                    <span>Cập nhật: {item.updatedAt}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-row sm:flex-col items-end sm:ml-8 mt-6 sm:mt-0 min-w-[80px] w-full sm:w-auto justify-between sm:justify-center">
+                                                             <div className="sm:hidden text-[11px] font-bold text-gray-500 uppercase">Sĩ số:</div>
+                                                             <div className="flex flex-col items-end">
+                                                                <span className="text-4xl font-black text-[#4285F4] dark:text-[#8AB4F8]">{item.current}</span>
+                                                                <div className={`flex items-center gap-1 font-bold text-sm ${diff >= 0 ? 'text-[#34A853]' : 'text-[#EA4335]'}`}>
+                                                                    <Icon name={diff >= 0 ? 'trending-up' : 'trending-down'} size={16} />
+                                                                    <span>{diff > 0 ? `+${diff}` : diff}</span>
+                                                                </div>
+                                                                <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 mt-1">Học sinh</span>
+                                                             </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'scheduler' && (
+                                    <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-6 lg:space-y-8">
+                                        <div className="flex flex-col gap-6">
+                                            {/* Header Scheduler */}
+                                            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 px-1 lg:px-2">
+                                                <div className="text-left space-y-1">
+                                                    <h2 className="text-2xl lg:text-3xl font-black uppercase tracking-tight">Tư vấn chọn lớp</h2>
+                                                    <p className="text-sm text-[#5F6368] font-medium">Tìm kiếm thời khóa biểu phù hợp cho học sinh.</p>
+                                                </div>
+                                                <div className="bg-white dark:bg-[#17191C] p-1.5 rounded-2xl shadow-sm border border-[#DADCE0] dark:border-[#3C4043] flex w-full lg:w-auto">
+                                                    <button onClick={() => setSchedulerMode('list')} className={`flex-1 px-6 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${schedulerMode === 'list' ? 'bg-[#202124] text-white dark:bg-white dark:text-black shadow-lg' : 'text-[#5F6368]'}`}>Danh sách</button>
+                                                    <button onClick={() => setSchedulerMode('calendar')} className={`flex-1 px-6 py-3 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${schedulerMode === 'calendar' ? 'bg-[#202124] text-white dark:bg-white dark:text-black shadow-lg' : 'text-[#5F6368]'}`}>Lịch tuần</button>
+                                                </div>
+                                            </div>
+
+                                            {/* Bộ lọc Scheduler: 3 cột Mobile/Tablet, 4 cột Desktop */}
+                                            <div className="bg-white dark:bg-[#17191C] p-6 rounded-[2rem] border border-[#DADCE0] dark:border-[#3C4043] shadow-sm">
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    <Icon name="filter" size={16} className="text-[#4285F4]" />
+                                                    <span className="text-xs font-black uppercase tracking-widest text-[#5F6368] dark:text-[#9AA0A6]">Bộ lọc nhanh</span>
+                                                </div>
+                                                <div className="grid grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4">
+                                                    <div className="space-y-1.5 text-left">
+                                                        <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Chi nhánh</label>
+                                                        <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={schBranch} onChange={e => setSchBranch(e.target.value)}>
+                                                            {branches.map(b => <option key={b} value={b}>{b === 'All' ? 'Tất cả' : b}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1.5 text-left">
+                                                        <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Khối lớp</label>
+                                                        <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={schGrade} onChange={e => setSchGrade(e.target.value)}>
+                                                            {grades.map(g => <option key={g} value={g}>{g === 'All' ? 'Khối' : g}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1.5 text-left">
+                                                        <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Môn học</label>
+                                                        <select className="w-full px-3 lg:px-4 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={schSubject} onChange={e => setSchSubject(e.target.value)}>
+                                                            {subjects.map(s => <option key={s} value={s}>{s === 'All' ? 'Môn' : s}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1.5 col-span-3 lg:col-span-1 text-left">
+                                                        <label className="text-[9px] lg:text-[10px] font-bold text-[#9AA0A6] uppercase tracking-wider ml-1">Tìm giáo viên</label>
+                                                        <div className="relative">
+                                                            <Icon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9AA0A6]" />
+                                                            <input type="text" placeholder="Tên..." className="w-full pl-9 pr-3 py-3 bg-[#F8F9FA] dark:bg-[#202124] border border-[#DADCE0] dark:border-[#3C4043] rounded-xl text-[10px] lg:text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-[#4285F4]/20 transition-all dark:text-white" value={schSearch} onChange={e => setSchSearch(e.target.value)} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {schedulerMode === 'list' ? (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+                                                {filteredSchedulerData.map(match => {
+                                                    const cap = 35;
+                                                    const pct = Math.min((match.current / cap) * 100, 100);
+                                                    const tIden = getTeacherIdentity(match.teacher);
+                                                    const time = getTimeFromDay(match.day);
+                                                    const colorClass = getShiftColor(time);
+
+                                                    return (
+                                                        <div key={match.id} className={`rounded-[2.5rem] border p-6 lg:p-8 flex flex-col sm:flex-row justify-between items-center group shadow-sm hover:shadow-xl transition-all relative overflow-hidden ${colorClass}`}>
+                                                            <div className={`absolute top-0 left-0 w-full h-1.5 ${branchStyles[match.branch] || branchStyles.Default}`}></div>
+                                                            <div className="space-y-6 w-full text-left">
+                                                                <div className="space-y-2">
+                                                                    <h3 className="text-xl font-black uppercase dark:text-white">{match.subject} Lớp {(match.grade || "").replace(/[^\d]/g, '')}</h3>
+                                                                    <div className={`inline-flex items-center px-3 py-1.5 rounded-full border ${tIden.bg} ${tIden.text} ${tIden.border} text-[11px] font-bold uppercase`}>Giáo viên: {match.teacher}</div>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-4">
+                                                                    <div className="flex items-center gap-3 text-xs font-bold text-[#5F6368] dark:text-[#9AA0A6]"><Icon name="clock" size={18} className="text-[#4285F4]" /> {match.day}</div>
+                                                                    <div className="flex items-center gap-3 text-xs font-bold text-[#5F6368] dark:text-[#9AA0A6]"><Icon name="map-pin" size={18} className="text-[#34A853]" /> {match.branch}</div>
+                                                                </div>
+                                                                <div className="space-y-2 pt-2 border-t border-black/5">
+                                                                    <div className="flex justify-between items-end"><span className="text-[10px] font-black uppercase text-[#5F6368]">Tỉ lệ lắp đầy</span><span className="text-[10px] font-black dark:text-white">{match.current}/{cap} HS</span></div>
+                                                                    <div className="w-full h-2 bg-gray-200/50 dark:bg-gray-800 rounded-full overflow-hidden"><div className={`h-full transition-all duration-1000 ${pct > 85 ? 'bg-[#EA4335]' : 'bg-[#34A853]'}`} style={{ width: `${pct}%` }}></div></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <CalendarWeekView data={filteredSchedulerData} />
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </main>
+
+                        {/* Navigation Mobile */}
+                        <nav className="fixed bottom-6 left-6 right-6 h-20 bg-gray-900/95 dark:bg-white/95 backdrop-blur-md flex items-center justify-around z-40 lg:hidden px-8 shadow-2xl rounded-[2rem] border border-white/10 dark:border-black/10 transition-all">
+                            <button onClick={() => setActiveTab('overview')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'overview' ? 'text-[#8AB4F8] dark:text-[#1967D2] font-black scale-110' : 'text-gray-400 dark:text-gray-500'}`}><Icon name="layout-grid" size={24} /><span className="text-[9px] font-bold uppercase">Sĩ số</span></button>
+                            <button onClick={() => setActiveTab('scheduler')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'scheduler' ? 'text-[#8AB4F8] dark:text-[#1967D2] font-black scale-110' : 'text-gray-400 dark:text-gray-500'}`}><Icon name="user-plus" size={24} /><span className="text-[9px] font-bold uppercase">Tư vấn</span></button>
+                        </nav>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
