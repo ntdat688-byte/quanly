@@ -326,11 +326,11 @@
                                                 </div>
                                             </div>
                                             <div className="bg-[#34A853] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
-                                                <h3 className="text-[10px] font-black uppercase text-green-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="trending-up" size={14} /> Top Chiêu Sinh</h3>
+                                                <h3 className="text-[10px] font-black uppercase text-green-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="trending-up" size={14} /> Top GV Chiêu Sinh</h3>
                                                 <div className="space-y-2 text-left">{stats.risingStars.map(s => (<div key={s.id} className="flex justify-between items-center bg-white/10 p-2.5 rounded-2xl border border-white/10"><span className="text-[11px] font-bold truncate pr-3">{s.teacher}</span><span className="text-[11px] font-black shrink-0">+{s.diff}</span></div>))}</div>
                                             </div>
                                             <div className="bg-[#EA4335] p-6 lg:p-7 rounded-[2.5rem] text-white shadow-xl relative overflow-hidden text-left">
-                                                <h3 className="text-[10px] font-black uppercase text-red-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="alert-circle" size={14} /> Lớp cần rà soát</h3>
+                                                <h3 className="text-[10px] font-black uppercase text-red-100 mb-4 tracking-widest flex items-center gap-2"><Icon name="alert-circle" size={14} /> GV cần rà soát - hỗ trợ</h3>
                                                 <div className="space-y-2 text-left">{stats.needsAttention.map(s => (<div key={s.id} className="flex justify-between items-center bg-white/10 p-2.5 rounded-2xl border border-white/10"><span className="text-[11px] font-bold truncate pr-3">{s.teacher}</span><span className="text-[11px] font-black shrink-0">{s.diff}</span></div>))}</div>
                                             </div>
                                         </div>
@@ -519,6 +519,7 @@
     </script>
 </body>
 </html>
+
 
 
 
